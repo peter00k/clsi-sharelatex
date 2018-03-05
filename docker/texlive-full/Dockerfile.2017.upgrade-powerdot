@@ -1,0 +1,14 @@
+# Needed to upgrade powerdot to version 1.5b in TeXLive 2017
+# to fix bug at https://sourceforge.net/p/miktex/bugs/2577/
+
+# Execute with 
+#
+# docker build -t texlive-full:2017.1 -f Dockerfile.2017.upgrade-powerdot .
+
+FROM quay.io/sharelatex/texlive-full:2017.1
+
+RUN /usr/local/texlive/2017/bin/x86_64-linux/tlmgr option docfiles 0 && \
+    /usr/local/texlive/2017/bin/x86_64-linux/tlmgr option srcfiles 0 && \
+    /usr/local/texlive/2017/bin/x86_64-linux/tlmgr update --self && \
+    /usr/local/texlive/2017/bin/x86_64-linux/tlmgr update powerdot && \
+    luaotfload-tool --update

@@ -1,0 +1,15 @@
+# Build an optimised TeXLive docker image by copying in the binaries
+# that we built in the builder docker image
+
+FROM ROOT
+
+COPY usr/local/texlive/YEAR/bin/x86_64-linux-opt/pdftex /usr/local/texlive/YEAR/bin/x86_64-linux/
+COPY usr/local/texlive/YEAR/bin/x86_64-linux-opt/xetex /usr/local/texlive/YEAR/bin/x86_64-linux/
+
+# TODO: include kpsewhich later when we have a way to optimise it
+# COPY usr/local/texlive/YEAR/bin/x86_64-linux-opt/kpsewhich /usr/local/texlive/YEAR/bin/x86_64-linux/
+
+# Include our copy of chktex
+COPY usr/local/bin/chktex /usr/local/bin/
+COPY usr/local/etc/chktexrc /usr/local/etc/
+

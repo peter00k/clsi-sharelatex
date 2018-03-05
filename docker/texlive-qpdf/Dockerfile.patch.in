@@ -1,0 +1,17 @@
+# Start from the existing texlive image
+FROM quay.io/sharelatex/texlive-full:TAG-orig
+
+# only add the qpdf patch to latemkrc if needed
+COPY latexmkrc.patch /
+RUN if ! grep -q qpdf ; then \
+    cat latexmkrc.patch /usr/local/share/latexmk/LatexMk > /usr/local/share/latexmk/LatexMk.new && \
+    mv /usr/local/share/latexmk/LatexMk.new /usr/local/share/latexmk/LatexMk && rm latexmkrc.patch; \
+    fi
+
+# Install qpdf
+COPY qpdf-6.0.0.tar.gz /
+RUN tar xvf qpdf-6.0.0.tar.gz ; cd qpdf-6.0.0 ; ./configure --prefix=/usr && make CFLAGS="-g -O2" CXXFLAGS="-g -O2" && make install && rm -rvf /qpdf-6.0.0.tar.gz /qpdf-6.0.0
+
+# qpdf does not benefit from profiling guided optimisation so no need
+# to have it as part of our optimised build (13.6s vs 14.0s on
+# pgf/tikz manual)

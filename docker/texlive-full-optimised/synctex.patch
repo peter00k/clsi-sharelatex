@@ -1,0 +1,11 @@
+--- ./texk/web2c/synctexdir/synctex.c~	2015-04-05 04:52:46.000000000 +0100
++++ ./texk/web2c/synctexdir/synctex.c	2016-05-03 09:34:55.239431102 +0100
+@@ -629,7 +629,7 @@
+                 SYNCTEX_FILE = fopen(the_busy_name, FOPEN_W_MODE);
+                 synctex_ctxt.fprintf = (synctex_fprintf_t) (&fprintf);
+             } else {
+-                SYNCTEX_FILE = gzopen(the_busy_name, FOPEN_WBIN_MODE);
++                SYNCTEX_FILE = gzopen(the_busy_name, FOPEN_WBIN_MODE "1");
+                 synctex_ctxt.fprintf = (synctex_fprintf_t) (&gzprintf);
+             }
+ #   if SYNCTEX_DEBUG

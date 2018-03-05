@@ -1,0 +1,22 @@
+###############################
+# Post processing of pdf file #
+###############################
+
+# assume the jobname is 'output' for sharelatex
+my $ORIG_PDF_AGE = -M "output.pdf"; # get age of existing pdf if present
+
+END {
+    my $NEW_PDF_AGE = -M "output.pdf";
+    return if !defined($NEW_PDF_AGE); # bail out if no pdf file
+    return if defined($ORIG_PDF_AGE) && $NEW_PDF_AGE == $ORIG_PDF_AGE; # bail out if pdf was not updated
+    my $QPDF = "/usr/bin/qpdf";
+    return if ! -x $QPDF; # check that qpdf exists
+    my $status = system($QPDF, "--linearize", "output.pdf", "output.pdf.opt");
+    my $exitcode = ($status >> 8);
+    print "qpdf exit code=$exitcode\n";
+    # qpdf returns 0 for success, 3 for warnings (output pdf still created)
+    return if !($exitcode == 0 || $exitcode == 3);
+    print "Renaming optimised file to output.pdf\n";
+    rename("output.pdf.opt", "output.pdf");
+}
+

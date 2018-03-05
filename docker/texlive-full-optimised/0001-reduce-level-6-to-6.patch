@@ -1,0 +1,33 @@
+From 28afea9706dcbd88bfde257e1471bb386446847f Mon Sep 17 00:00:00 2001
+From: Brian Gough <bjg@network-theory.co.uk>
+Date: Fri, 6 May 2016 09:17:58 +0100
+Subject: [PATCH] reduce level>6 to 6
+
+---
+ deflate.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/deflate.c b/deflate.c
+index a970a1d..0545168 100644
+--- a/deflate.c
++++ b/deflate.c
+@@ -238,6 +238,7 @@ int ZEXPORT deflateInit2_(strm, level, method, windowBits, memLevel, strategy,
+ #endif
+ 
+     if (level == Z_DEFAULT_COMPRESSION) level = 6;
++    if (level > 6) level = 6; /* BJG: REDUCE EXCESSIVE COMPRESSION */
+ 
+     if (windowBits < 0) { /* suppress zlib wrapper */
+         wrap = 0;
+@@ -469,6 +470,8 @@ int ZEXPORT deflateParams(strm, level, strategy)
+     s = strm->state;
+ 
+     if (level == Z_DEFAULT_COMPRESSION) level = 6;
++    if (level > 6) level = 6; /* BJG: REDUCE EXCESSIVE COMPRESSION */
++
+     if (level < 0 || level > 9 || strategy < 0 || strategy > Z_FIXED) {
+         return Z_STREAM_ERROR;
+     }
+-- 
+1.9.1
+

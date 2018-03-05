@@ -1,0 +1,10 @@
+# Needed to renegerate font cache
+# see https://github.com/overleaf/sharelatex/issues/287
+
+# Execute with
+#
+# docker build -t texlive-full:2017.1 -f Dockerfile.2017.rebuild-fc-cache .
+
+FROM quay.io/sharelatex/texlive-full:2017.1
+
+RUN fc-cache -s

@@ -1,0 +1,15 @@
+--- magazine-sample.tex~	2014-09-25 22:41:58.000000000 +0100
++++ magazine-sample.tex	2016-05-10 14:23:50.787890861 +0100
+@@ -3,9 +3,9 @@
+ \usepackage{xltxtra}
+ \usepackage{amsmath}
+ \usepackage{xepersian}
+-\settextfont[Scale=1]{XB Zar}
+-\setlatintextfont[Scale=1]{Junicode}
+-\setdigitfont{XB Zar}
++\settextfont[Path=./Zar/,Scale=1]{XB Zar}
++\setlatintextfont[Path=./junicode/fonts/,Scale=1]{Junicode}
++\setdigitfont[Path=./Zar/]{XB Zar}
+ \pagestyle{fancy}
+ \title{مجلهٔ زی‌پرشین}
+ \author{وفا خلیقی}

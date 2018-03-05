@@ -1,0 +1,14 @@
+Dockerfiles for adding qpdf into existing docker images
+=======================================================
+
+We want to add qpdf into our existing containers, and need to use the
+latest version qpdf-6.0.0 in all images.
+
+These Dockerfiles start from our existing images and add qpdf and the
+changes to latexmkrc to allow it to run when latexmk exits.
+
+Use "make all" to build the new images
+
+    - texlive-full:2016.1-qpdf from quay.io/sharelatex/texlive-full:2016.1
+    - texlive-full:2015.1-qpdf from quay.io/sharelatex/texlive-full:2015.1
+    - texlive-full:2014.2-qpdf from quay.io/sharelatex/texlive-full:2014.2

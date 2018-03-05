@@ -1,0 +1,142 @@
+# This docker image is used to build optimised TeXLive binaries,
+# which are then copied into our TeXLive image.
+
+# We use Ubuntu 14.04 or 16.04 to compile the binaries, but they will work in
+# the 12.04 container too.
+FROM ubuntu:BUILD_UBUNTU
+
+# Install packages we need to compile TeXLive
+RUN apt-get update && apt-get -y upgrade
+RUN apt-get install -y wget gcc g++ xz-utils make unzip patch
+RUN apt-get install -y libfontconfig1-dev libxmu-dev libxaw7-dev
+
+# Set up an small TeXLive installation, we will use this for profiling
+# the binaries
+COPY install-tl-unx-YEAR.tar.gz /data/
+
+WORKDIR /data/instal-tl/
+RUN tar -x -f ../install-tl-unx-YEAR.tar.gz --strip-components 1
+RUN echo "selected_scheme scheme-small" > texlive.profile
+RUN ./install-tl -profile texlive.profile -repository REPO
+
+# Now get the TeXLive source ready to compile it
+COPY texlive-VERSION-source.tar.xz /data/
+
+# Prepare the cloudflare zlib library, we will use this to speed up
+# compression
+COPY gcc.amd64.zip /data/
+WORKDIR /data/
+RUN unzip gcc.amd64.zip
+WORKDIR /data/zlib-gcc.amd64
+# Apply my zlib patch to reduce optimisation level from 9 to 6
+COPY 0001-reduce-level-6-to-6.patch /data/
+RUN patch < ../0001-reduce-level-6-to-6.patch
+
+# We will use profile guided optimisation, so we instrument the binary first
+RUN CFLAGS="-g -O3 -mpclmul -msse4.2 -fprofile-generate" ./configure && make
+# Run the compiled code at different compression levels to exercise all the functions
+RUN xzcat /data/texlive-VERSION-source.tar.xz | md5sum > /tmp/md5.init
+RUN for type in "" "-f" "-h" "-r" ; do \
+    for level in 1 5 9 ; do \
+	echo -n "compression type [$type], level [$level]: "; \
+	xzcat /data/texlive-VERSION-source.tar.xz | \
+	./minigzip $type -$level -c > /tmp/ztest.dat ; \
+	wc -c /tmp/ztest.dat; \
+	./minigzip -d < /tmp/ztest.dat | md5sum > /tmp/md5.out ; \
+	diff /tmp/md5.init /tmp/md5.out ;\
+	done ; \
+    done
+
+# Now recompile using the branch prediction statistics we just generated
+RUN CFLAGS="-g -O3 -mpclmul -msse4.2 -fprofile-use" ./configure && make
+
+# Needed for some of the configure scripts
+RUN apt-get install -y file
+
+# Compile TeXLive
+WORKDIR /data
+RUN tar xf texlive-VERSION-source.tar.xz
+WORKDIR /data/texlive-VERSION-source
+# We patch synctex to use the lowest level of compression as it is not
+# visible to the user, so compression level 1 is sufficient
+COPY synctex.patch /data/
+RUN patch -p0 < ../synctex.patch
+RUN mkdir -p inst/texmf Work
+WORKDIR Work
+RUN ../configure -C --enable-largefile --disable-missing --disable-shared --with-xdvi-x-toolkit=xaw --disable-cxx-runtime-hack
+# Create the zlib directory and copy in our optimized version of libz.a
+RUN make -C libs recurse CONF_SUBDIRS=zlib MAKE_SUBDIRS=zlib
+# Copy the library and include file to get the correct ZLIB_VERNUM in the headers
+# (needed because libpng has conditionals for ZLIB features based on version)
+RUN cp -v /data/zlib-gcc.amd64/libz.a libs/zlib
+RUN cp -v /data/zlib-gcc.amd64/zlib.h libs/zlib/include
+# Now build all the other libraries
+RUN make -C libs
+# Now build everything else
+RUN make
+# Now rebuild pdftex and xetex with profiling
+RUN rm -v -f texk/web2c/pdftex*.o texk/web2c/pdftexdir/*.o
+RUN rm -v -f texk/web2c/xetex*.o texk/web2c/xetexdir/*.o
+RUN make -C texk/web2c CFLAGS="-g -O2 -fprofile-generate" CXXFLAGS="-g -O2 -fprofile-generate"
+RUN make world check_target="skip" prefix=/usr/local/texlive/YEAR bindir=/usr/local/texlive/YEAR/bin/x86_64-linux-profile STRIP=/bin/true
+# rebuild the formats
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH /usr/local/texlive/YEAR/bin/x86_64-linux-profile/fmtutil --sys --byfmt pdflatex
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH /usr/local/texlive/YEAR/bin/x86_64-linux-profile/fmtutil --sys --byfmt xelatex
+
+# Now do some profile guided optimisation runs
+RUN rm -f texk/web2c/*.gcda texk/web2c/*/*.gcda
+
+# First test case, the memoir manual - a typical large LaTeX file
+RUN cp -av /usr/local/texlive/YEAR/texmf-dist/doc/latex/memoir/ /tmp
+WORKDIR /tmp/memoir
+RUN /usr/local/texlive/YEAR/bin/x86_64-linux-profile/tlmgr -repository REPO install ec courier comment layouts symbol dpfloat fonttable marginnote fixme palatino bookman charter ncntrsbk utopia avantgar helvetic zapfchan blindtext
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH pdflatex -synctex=1 trims-example.tex
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH pdflatex -synctex=1 memman.tex
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH pdflatex -synctex=1 memman.tex
+
+# Second test case, the pgf manual - lots of tikz figues
+RUN cp -av /usr/local/texlive/YEAR/texmf-dist/doc/generic/pgf/ /tmp
+WORKDIR /tmp/pgf
+RUN mkdir -p version-for-pdftex/en/plots
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH make -C version-for-pdftex/en latex="pdflatex -synctex=1"
+
+# Third test case, the texlive manual - includes pngs
+RUN cp -a  /usr/local/texlive/YEAR/texmf-dist/doc/texlive /tmp/
+WORKDIR /tmp/texlive
+RUN /usr/local/texlive/YEAR/bin/x86_64-linux-profile/tlmgr -repository REPO install relsize beebe
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH make -C texlive-en pdf
+
+# Fourth test case, a xelatex example
+RUN /usr/local/texlive/YEAR/bin/x86_64-linux-profile/tlmgr -repository REPO install bidi multido datetime fmtcount textpos hyphenat lastpage setspace xepersian
+RUN /usr/local/texlive/YEAR/bin/x86_64-linux-profile/tlmgr -repository REPO install junicode
+RUN cp -a /usr/local/texlive/YEAR/texmf-dist/doc/xelatex /tmp
+WORKDIR /tmp/xelatex/xepersian
+COPY Zar.zip .
+RUN unzip Zar.zip
+COPY junicode-0-7-8.zip .
+RUN unzip junicode-0-7-8.zip
+COPY xelatex-sample.patch .
+RUN patch < xelatex-sample.patch
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH xelatex -synctex=1 -interaction=batchmode magazine-sample.tex || true
+RUN PATH=/usr/local/texlive/YEAR/bin/x86_64-linux-profile:$PATH xelatex -synctex=1 -interaction=batchmode magazine-sample.tex || true
+
+# Rebuild with branch prediction
+WORKDIR /data/texlive-VERSION-source/Work
+RUN rm -v -f texk/web2c/pdftex*.o texk/web2c/pdftexdir/*.o
+RUN rm -v -f texk/web2c/xetex*.o texk/web2c/xetexdir/*.o
+RUN make -C texk/web2c CFLAGS="-g -O2 -fprofile-use" CXXFLAGS="-g -O2 -fprofile-use"
+
+# Install it
+RUN make world check_target="skip" prefix=/usr/local/texlive/YEAR bindir=/usr/local/texlive/YEAR/bin/x86_64-linux-opt-debug STRIP=/bin/true
+RUN make world check_target="skip" prefix=/usr/local/texlive/YEAR bindir=/usr/local/texlive/YEAR/bin/x86_64-linux-opt STRIP=/bin/true
+
+# Install updated chktex
+COPY chktex-master.tar.gz /data/
+WORKDIR /data/
+RUN tar xvf chktex-master.tar.gz
+WORKDIR /data/chktex-master
+RUN apt-get install -y automake autoconf libpcre3-dev
+RUN ./autogen.sh
+RUN ./configure -C ac_cv_lib_termcap_tgetent=no ac_cv_lib_termlib_tgetent=no
+RUN make LIBS="/usr/lib/x86_64-linux-gnu/libpcreposix.a /usr/lib/x86_64-linux-gnu/libpcre.a"
+RUN touch ChkTeX.dvi && make install
